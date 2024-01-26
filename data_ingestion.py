@@ -34,6 +34,8 @@ class Data_ingestion:
 
 	def converting_pdf_into_text_file(self):
 		if self.text_file_path is not None:
+			if not os.path.isdir(self.text_file_path):
+				os.mkdir(self.text_file_path)
 			for i, file in enumerate(os.listdir(self.destination_path)):
 				file_path = os.path.join(self.destination_path, file)
 				pdf_document = fitz.open(file_path)
