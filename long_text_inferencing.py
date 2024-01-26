@@ -1,30 +1,20 @@
-import pandas as pd
-import matplotlib.pyplot as plt
-import logging
-import re
-import json
 import numpy as np
 import torch
-from tqdm import trange
-from tqdm import tqdm_notebook as tqdm
 from transformers import BertForTokenClassification, BertTokenizerFast
-from torch.utils.data import Dataset, DataLoader, RandomSampler, SequentialSampler
-from data_ingestion import Data_ingestion
-from data_preparation import data_preparation
-from data_preprocessing import data_preprocessing
+
 
 MAX_LEN = 512
 EPOCHS = 4
-MODEL_PATH = '../input/bert-base-uncased'
-TOKENIZER = BertTokenizerFast('../input/bert-base-uncased/vocab.txt', lowercase=True)
+MODEL_PATH = 'Bert'
+TOKENIZER = BertTokenizerFast('Bert/vocab.txt', lowercase=True)
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-MAX_LEN = 512
+#MAX_LEN = 512
 EPOCHS = 4
 DEVICE = torch.device("cpu")
-MODEL_PATH = '../input/bert-base-uncased'
-STATE_DICT = torch.load('/kaggle/input/trained-ner-model/model_e10.tar', map_location=DEVICE)
-TOKENIZER = BertTokenizerFast('../input/bert-base-uncased/vocab.txt', lowercase=True)
+#MODEL_PATH = 'Bert'
+STATE_DICT = torch.load('Trained_NER_model/model_e10.tar', map_location=DEVICE)
+TOKENIZER = BertTokenizerFast('Bert/vocab.txt', lowercase=True)
 MODEL = BertForTokenClassification.from_pretrained(MODEL_PATH, state_dict=STATE_DICT['model_state_dict'], num_labels=9)
 
 label_list = ["CERTIFICATE_NO","ISSUED_DATE","ORDER_NO","PURCHASE_ORDER","SUPPLIER_NAME","CUSTOMER_NAME","PLATE_NO","O","MISC"]
@@ -116,7 +106,6 @@ def model_inference_long_text(input_dict,text):
 		final_entities = []
 		entities = []
 		for i in range(np.argmax(logits, axis=2).size(0)):
-
 			for label_id, offset in zip(np.argmax(logits, axis=2)[i].tolist(),
 			                            input_dict["offset_mapping"].numpy().tolist()[i]):
 				# print(i)
@@ -134,6 +123,20 @@ def model_inference_long_text(input_dict,text):
 			for ent in entities:
 				ent['text'] = text[ent['start']:ent['end']]
 	return entities
+
+
+f = open("doc3_txt/doc_0.txt",'rb')
+text1 = f.read()
+text = str(text1)
+#print(str(text))
+print(type(text))
+input_dict =tokenize_long_text(text)
+f =input_dict["input_ids"].size()
+print(f)
+entities = model_inference_long_text(input_dict,text)
+print(entities)
+
+
 
 
 
