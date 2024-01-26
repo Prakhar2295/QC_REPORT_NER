@@ -1,8 +1,5 @@
 import torch
-import os
 import numpy as np
-from torch.optim import AdamW
-from tqdm import trange
 from transformers import BertForTokenClassification, BertTokenizerFast
 from dataloader import data_loader,get_special_tokens,annot_confusion_matrix,flat_accuracy
 
@@ -25,102 +22,62 @@ label2id = {v:k for k,v in enumerate(label_list)}
 model = MODEL
 model.to(DEVICE)
 
-def test_text_preprocessing(text_file_path:str):
-	file_list = []
-	for file in os.listdir(text_file_path):
-		file_list.append(file[-1])
-	return file_list
 
+class model_prediction:
+	def __init__(self,data,max_len):
+		self.data = data
+		self.tokenzier = TOKENIZER
+		self.max_len = max_len
+		self.model = MODEL
+		self.device =torch.device("cpu")
 
-def tokenize_long_text(text):
-	#file_list = test_text_preprocessing(text_file_path)
-	#token_file_list = []
-	#for file in os.listdir(text_file_path):
-		#with open(file,'rb') as doc:
-			#text = doc.read()
-		#input_dict = {}
-	tok = TOKENIZER.encode_plus(text, add_special_tokens=False, return_tensors='pt', return_offsets_mapping=True)
-	input_id_chunks = tok["input_ids"][0].split(510)
-	mask_chunks = tok["attention_mask"][0].split(510)
-	offset_mappings = tok["offset_mapping"][0].split(510)
+	def process_data(self):
+		tok = self.tokenzier.encode_plus(self.data, max_length=self.max_len, return_offsets_mapping=True)
 
-	chunk_size = 512
+		curr_sent = dict()
 
-	input_id_chunks = list(input_id_chunks)
-	mask_chunks = list(mask_chunks)
-	offset_mappings = list(offset_mappings)
+		padding_length = self.max_len - len(tok['input_ids'])
 
-	for i in range(len(input_id_chunks)):
-		if len(input_id_chunks[i]) == chunk_size:
-			pass
-		else:
-			input_id_chunks[i] = torch.cat([
-				torch.tensor([101]), input_id_chunks[i], torch.tensor([102])
-			])
-		if len(mask_chunks[i]) == chunk_size:
-			pass
-		else:
-			mask_chunks[i] = torch.cat([
-				torch.tensor([1]), mask_chunks[i], torch.tensor([1])
-			])
-		if len(offset_mappings[i]) == chunk_size:
-			pass
-		else:
-			offset_mappings[i] = torch.cat([
-				torch.tensor([[0, 0]]), offset_mappings[i], torch.tensor([[0, 0]])
-			])
+		curr_sent['input_ids'] = tok['input_ids'] + ([0] * padding_length)
+		curr_sent['token_type_ids'] = tok['token_type_ids'] + ([0] * padding_length)
+		curr_sent['attention_mask'] = tok['attention_mask'] + ([0] * padding_length)
 
-		pad_len = chunk_size - input_id_chunks[i].shape[0]
+		final_data = {
+			'input_ids': torch.tensor(curr_sent['input_ids'], dtype=torch.long),
+			'token_type_ids': torch.tensor(curr_sent['token_type_ids'], dtype=torch.long),
+			'attention_mask': torch.tensor(curr_sent['attention_mask'], dtype=torch.long),
+			'offset_mapping': tok['offset_mapping'],
+			'tokens': tok.tokens()
+		}
+		return final_data
 
-		if pad_len > 0:
-			input_id_chunks[i] = torch.cat([
-				input_id_chunks[i], torch.tensor([0] * pad_len)
-			])
+	def predict(self, idx2tag, tag2idx):
+		model.eval()
+		data = self.process_data()
+		# print(type(data["offset_mapping"]))
+		# print(data["offset_mapping"])
+		input_ids, input_mask = data['input_ids'].unsqueeze(0), data['attention_mask'].unsqueeze(0)
+		labels = torch.tensor([1] * input_ids.size(0), dtype=torch.long).unsqueeze(0)
+		with torch.no_grad():
+			outputs = self.model(
+				input_ids,
+				token_type_ids=None,
+				attention_mask=input_mask,
+				labels=labels,
+			)
+			tmp_eval_loss, logits = outputs[:2]
 
-			mask_chunks[i] = torch.cat([
-				mask_chunks[i], torch.tensor([0] * pad_len)
-			])
+		logits = logits.cpu().detach().numpy()
+		# print(logits)
+		label_ids = np.argmax(logits, axis=2)
+		# print(type(label_ids))
+		# print(label_ids)
+		# print(len(label_ids[0]))
 
-			offset_mappings[i] = torch.cat([
-
-				offset_mappings[i], torch.tensor([[0, 0]] * pad_len)
-
-			])
-
-	input_ids = torch.stack(input_id_chunks)
-	attention_mask = torch.stack(mask_chunks)
-	offset_mapping = torch.stack(offset_mappings)
-	input_dict = {
-
-		"input_ids": input_ids.long(),
-		"attention_mask": attention_mask.long(),
-		"offset_mapping": offset_mapping.long()
-
-	}
-
-		#token_file_list.append({file:input_dict})
-
-	return input_dict
-
-
-def prediction(input_dict:dict,text):
-	model.eval()
-	# data = process_resume2(test_resume, tokenizer, MAX_LEN)
-	# input_ids, input_mask = data['input_ids'].unsqueeze(0), data['attention_mask'].unsqueeze(0)
-	# @labels = torch.tensor([1] * input_ids.size(0), dtype=torch.long).unsqueeze(0)
-	with torch.no_grad():
-		outputs = model(
-			input_dict["input_ids"],
-			token_type_ids=None,
-			attention_mask=input_dict["attention_mask"]
-		)
-		logits = outputs[0]
-
-	logits = logits.cpu().detach().numpy()
-	entities = []
-	for i in range(len(input_dict["input_ids"].size(0))):
-		for label_id, offset in zip(np.argmax(logits, axis=2)[i].tolist(),input_dict["offset_mapping"][i].numpy().tolist()):
-			curr_id = id2label[label_id]
+		final_data = []
+		entities = []
+		for label_id, offset in zip(label_ids[0], data['offset_mapping']):
+			curr_id = idx2tag[label_id]
 			curr_start = offset[0]
 			curr_end = offset[1]
 			if curr_id != 'O':
@@ -129,10 +86,10 @@ def prediction(input_dict:dict,text):
 					entities[-1]['end'] = curr_end
 				else:
 					entities.append({'entity': curr_id, 'start': curr_start, 'end': curr_end})
+		#final_data.append([data["tokens"], entities, self.data])
 		for ent in entities:
-			ent['text'] = text[ent['start']:ent['end']]
-
-	return entities
+			ent['text'] = self.data[ent['start']:ent['end']]
+		return entities
 
 
 
