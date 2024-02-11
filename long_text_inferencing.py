@@ -125,16 +125,16 @@ def model_inference_long_text(input_dict,text):
 	return entities
 
 
-f = open("doc3_txt/doc_0.txt",'rb')
-text1 = f.read()
-text = str(text1)
+#f = open("doc3_txt/doc_0.txt",'rb')
+#text1 = f.read()
+#text = str(text1)
 #print(str(text))
-print(type(text))
-input_dict =tokenize_long_text(text)
-f =input_dict["input_ids"].size()
-print(f)
-entities = model_inference_long_text(input_dict,text)
-print(entities)
+#print(type(text))
+##input_dict =tokenize_long_text(text)
+#f =input_dict["input_ids"].size()
+#print(f)
+#entities = model_inference_long_text(input_dict,text)
+#print(entities)
 
 
 
